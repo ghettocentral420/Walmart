@@ -336,9 +336,6 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
   }
 
   // === SCANNER ===
-  var _nativeStream = null;
-  var _nativeScanLoop = null;
-
   function openScanner() {
     var overlay = document.getElementById('cp-scanner-overlay');
     overlay.style.display = 'block';
@@ -346,79 +343,11 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     var readerEl = document.getElementById('cp-reader');
     readerEl.innerHTML = '';
 
-    // Check if native BarcodeDetector actually supports barcode formats we need
-    if ('BarcodeDetector' in window) {
-      BarcodeDetector.getSupportedFormats().then(function(formats) {
-        if (formats.indexOf('upc_a') >= 0 || formats.indexOf('ean_13') >= 0) {
-          startNativeScanner(readerEl);
-        } else if (typeof Html5Qrcode !== 'undefined') {
-          startHtml5Scanner(readerEl);
-        }
-      }).catch(function() {
-        if (typeof Html5Qrcode !== 'undefined') startHtml5Scanner(readerEl);
-      });
-    } else if (typeof Html5Qrcode !== 'undefined') {
+    if (typeof Html5Qrcode !== 'undefined') {
       startHtml5Scanner(readerEl);
     } else {
       readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>No scanner available. Enter UPC manually below.</p></div>';
     }
-  }
-
-  function applyFocusAndZoom(track) {
-    var cap = track.getCapabilities ? track.getCapabilities() : {};
-    if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) {
-      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
-    }
-  }
-
-  function startNativeScanner(readerEl) {
-    var video = document.createElement('video');
-    video.setAttribute('playsinline', '');
-    video.setAttribute('autoplay', '');
-    video.setAttribute('muted', '');
-    video.muted = true;
-    video.style.cssText = 'width:100%; display:block; background:#000;';
-    readerEl.appendChild(video);
-
-    var detector = new BarcodeDetector({
-      formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code']
-    });
-
-    navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-    }).then(function(stream) {
-      _nativeStream = stream;
-      video.srcObject = stream;
-      video.play();
-      var track = stream.getVideoTracks()[0];
-      if (track) applyFocusAndZoom(track);
-
-      function scanFrame() {
-        if (!_nativeStream) return;
-        if (video.readyState >= 2) {
-          detector.detect(video).then(function(barcodes) {
-            if (barcodes.length > 0 && !isProcessingScan) {
-              onScanSuccess(barcodes[0].rawValue);
-              return;
-            }
-            _nativeScanLoop = requestAnimationFrame(scanFrame);
-          }).catch(function() {
-            _nativeScanLoop = requestAnimationFrame(scanFrame);
-          });
-        } else {
-          _nativeScanLoop = requestAnimationFrame(scanFrame);
-        }
-      }
-      _nativeScanLoop = requestAnimationFrame(scanFrame);
-    }).catch(function(err) {
-      console.warn('Native camera failed, trying html5-qrcode:', err);
-      readerEl.innerHTML = '';
-      if (typeof Html5Qrcode !== 'undefined') {
-        startHtml5Scanner(readerEl);
-      } else {
-        readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>Camera not available. Enter UPC manually below.</p></div>';
-      }
-    });
   }
 
   function startHtml5Scanner(readerEl) {
@@ -436,38 +365,59 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         verbose: false
       });
+
+      // KEY FIX: first arg must be {} when videoConstraints is in config
+      // Per html5-qrcode issue #820 — passing facingMode in BOTH args causes conflicts
       scanner.start(
-        { facingMode: 'environment' },
-        { fps: 20, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
+        {},
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 150 },
+          rememberLastUsedCamera: true,
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        },
         onScanSuccess,
         function() {}
       ).then(function() {
-        var video = document.querySelector('#cp-reader video');
-        if (video && video.srcObject) {
-          var track = video.srcObject.getVideoTracks()[0];
-          if (track) applyFocusAndZoom(track);
-        }
+        // Wait 2s for camera to fully stabilize before applying focus/zoom
+        // Per issue #820: constraints applied too early get ignored on iPhone
+        setTimeout(function() {
+          try {
+            var video = document.querySelector('#cp-reader video');
+            if (video && video.srcObject) {
+              var track = video.srcObject.getVideoTracks()[0];
+              if (track) {
+                var cap = track.getCapabilities ? track.getCapabilities() : {};
+                var advanced = [];
+                if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) {
+                  advanced.push({ focusMode: 'continuous' });
+                }
+                if (cap.zoom && cap.zoom.max > 1) {
+                  advanced.push({ zoom: Math.min(2.0, cap.zoom.max) });
+                }
+                if (advanced.length > 0) {
+                  track.applyConstraints({ advanced: advanced }).catch(function(){});
+                }
+              }
+            }
+          } catch(e) {}
+        }, 2000);
       }).catch(function(err) {
-        console.warn('Camera failed:', err);
+        console.warn('Camera start failed:', err);
         readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>Camera not available. Enter UPC manually below.</p></div>';
       });
     } catch(e) {
-      console.error('Scanner error:', e);
+      console.error('Scanner init error:', e);
     }
   }
 
   function closeScanner() {
     return new Promise(function(resolve) {
       var overlay = document.getElementById('cp-scanner-overlay');
-
-      // Stop native scanner
-      if (_nativeScanLoop) { cancelAnimationFrame(_nativeScanLoop); _nativeScanLoop = null; }
-      if (_nativeStream) {
-        _nativeStream.getTracks().forEach(function(t) { t.stop(); });
-        _nativeStream = null;
-      }
-
-      // Stop html5-qrcode scanner
       if (scanner) {
         scanner.stop().then(function() {
           scanner = null;
