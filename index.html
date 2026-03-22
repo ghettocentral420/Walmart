@@ -366,11 +366,9 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
 
   function applyFocusAndZoom(track) {
     var cap = track.getCapabilities ? track.getCapabilities() : {};
-    var adv = {};
-    if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
-    if (cap.focusDistance) adv.focusDistance = cap.focusDistance.min + (cap.focusDistance.max - cap.focusDistance.min) * 0.3;
-    if (cap.zoom && cap.zoom.min < cap.zoom.max) adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.2;
-    if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function(){});
+    if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) {
+      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function(){});
+    }
   }
 
   function startNativeScanner(readerEl) {
