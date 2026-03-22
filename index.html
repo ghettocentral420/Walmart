@@ -346,9 +346,17 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     var readerEl = document.getElementById('cp-reader');
     readerEl.innerHTML = '';
 
-    // Try native BarcodeDetector first (hardware-accelerated, instant)
+    // Check if native BarcodeDetector actually supports barcode formats we need
     if ('BarcodeDetector' in window) {
-      startNativeScanner(readerEl);
+      BarcodeDetector.getSupportedFormats().then(function(formats) {
+        if (formats.indexOf('upc_a') >= 0 || formats.indexOf('ean_13') >= 0) {
+          startNativeScanner(readerEl);
+        } else if (typeof Html5Qrcode !== 'undefined') {
+          startHtml5Scanner(readerEl);
+        }
+      }).catch(function() {
+        if (typeof Html5Qrcode !== 'undefined') startHtml5Scanner(readerEl);
+      });
     } else if (typeof Html5Qrcode !== 'undefined') {
       startHtml5Scanner(readerEl);
     } else {
@@ -356,10 +364,21 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     }
   }
 
+  function applyFocusAndZoom(track) {
+    var cap = track.getCapabilities ? track.getCapabilities() : {};
+    var adv = {};
+    if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
+    if (cap.focusDistance) adv.focusDistance = cap.focusDistance.min + (cap.focusDistance.max - cap.focusDistance.min) * 0.3;
+    if (cap.zoom && cap.zoom.min < cap.zoom.max) adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.2;
+    if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function(){});
+  }
+
   function startNativeScanner(readerEl) {
     var video = document.createElement('video');
     video.setAttribute('playsinline', '');
     video.setAttribute('autoplay', '');
+    video.setAttribute('muted', '');
+    video.muted = true;
     video.style.cssText = 'width:100%; display:block; background:#000;';
     readerEl.appendChild(video);
 
@@ -368,23 +387,14 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     });
 
     navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
     }).then(function(stream) {
       _nativeStream = stream;
       video.srcObject = stream;
       video.play();
-
-      // Enable autofocus + slight zoom
       var track = stream.getVideoTracks()[0];
-      if (track) {
-        var cap = track.getCapabilities ? track.getCapabilities() : {};
-        var adv = {};
-        if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
-        if (cap.zoom && cap.zoom.min < cap.zoom.max) adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.15;
-        if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function(){});
-      }
+      if (track) applyFocusAndZoom(track);
 
-      // Scan loop
       function scanFrame() {
         if (!_nativeStream) return;
         if (video.readyState >= 2) {
@@ -403,8 +413,13 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
       }
       _nativeScanLoop = requestAnimationFrame(scanFrame);
     }).catch(function(err) {
-      console.warn('Camera failed:', err);
-      readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>Camera not available. Enter UPC manually below.</p></div>';
+      console.warn('Native camera failed, trying html5-qrcode:', err);
+      readerEl.innerHTML = '';
+      if (typeof Html5Qrcode !== 'undefined') {
+        startHtml5Scanner(readerEl);
+      } else {
+        readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>Camera not available. Enter UPC manually below.</p></div>';
+      }
     });
   }
 
@@ -420,24 +435,19 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
           Html5QrcodeSupportedFormats.CODE_39,
           Html5QrcodeSupportedFormats.QR_CODE
         ],
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         verbose: false
       });
       scanner.start(
-        { facingMode: { exact: 'environment' } },
-        { fps: 15, qrbox: function(vw, vh) { return { width: Math.floor(vw * 0.9), height: Math.floor(vh * 0.35) }; } },
+        { facingMode: 'environment' },
+        { fps: 20, videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } },
         onScanSuccess,
         function() {}
       ).then(function() {
         var video = document.querySelector('#cp-reader video');
         if (video && video.srcObject) {
           var track = video.srcObject.getVideoTracks()[0];
-          if (track) {
-            var cap = track.getCapabilities ? track.getCapabilities() : {};
-            var adv = {};
-            if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
-            if (cap.zoom && cap.zoom.min < cap.zoom.max) adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.15;
-            if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function(){});
-          }
+          if (track) applyFocusAndZoom(track);
         }
       }).catch(function(err) {
         console.warn('Camera failed:', err);
