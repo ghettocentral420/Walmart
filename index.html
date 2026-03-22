@@ -780,6 +780,17 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     var cartBtn = document.getElementById('cart-button-header');
     if (cartBtn) cartBtn.setAttribute('aria-label', 'Cart contains ' + totalQty + ' items Total Amount $' + total.toFixed(2));
 
+    // Exit Pass total at top of page
+    var epassCard = document.querySelector('[class*="epass-top-card"]');
+    if (epassCard) {
+      var epassSpans = epassCard.querySelectorAll('span');
+      for (var k = 0; k < epassSpans.length; k++) {
+        if (epassSpans[k].textContent.indexOf('$') !== -1) {
+          epassSpans[k].textContent = '$' + total.toFixed(2);
+        }
+      }
+    }
+
     // Payment section - subtotal
     var subtotalSection = document.querySelector('.bill-order-payment-subtotal');
     if (subtotalSection) {
