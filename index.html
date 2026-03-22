@@ -374,19 +374,14 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
           Html5QrcodeSupportedFormats.CODE_39,
           Html5QrcodeSupportedFormats.QR_CODE
         ],
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        },
         verbose: false
       });
       scanner.start(
         { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: function(vw, vh) {
-            var w = Math.floor(vw * 0.85);
-            var h = Math.floor(vh * 0.25);
-            return { width: Math.max(w, 150), height: Math.max(h, 50) };
-          },
-          disableFlip: false
-        },
+        { fps: 5 },
         onScanSuccess,
         function() {}
       ).catch(function(err) {
