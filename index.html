@@ -176,7 +176,6 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
     try { hideExistingItems(); } catch(e) { console.error('hideExistingItems:', e); }
     try { renderCart(); } catch(e) { console.error('renderCart:', e); }
     try { updateTotals(); } catch(e) { console.error('updateTotals:', e); }
-    try { addScanFab(); } catch(e) { console.error('addScanFab:', e); }
   }
 
   // === CART BUTTON ===
@@ -198,22 +197,6 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
         el = el.parentElement;
       }
     }, true); // capture phase â€” fires before any Walmart handlers
-  }
-
-  // === FLOATING SCAN BUTTON (reliable fallback) ===
-  function addScanFab() {
-    if (document.getElementById('cp-scan-fab')) return;
-    var fab = document.createElement('button');
-    fab.id = 'cp-scan-fab';
-    fab.innerHTML = '&#128247; Scan';
-    fab.setAttribute('aria-label', 'Open barcode scanner');
-    fab.style.cssText = 'position:fixed; bottom:24px; right:20px; z-index:9999; background:#0071dc; color:white; border:none; border-radius:50px; padding:14px 22px; font-size:16px; font-weight:700; font-family:sans-serif; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,0.3); display:flex; align-items:center; gap:6px;';
-    fab.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openScanner();
-    });
-    document.body.appendChild(fab);
   }
 
   // === MODAL / OVERLAY LISTENERS ===
