@@ -384,7 +384,26 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
         { fps: 5 },
         onScanSuccess,
         function() {}
-      ).catch(function(err) {
+      ).then(function() {
+        // Enable continuous autofocus + slight zoom for barcode scanning
+        var video = document.querySelector('#cp-reader video');
+        if (video && video.srcObject) {
+          var track = video.srcObject.getVideoTracks()[0];
+          if (track) {
+            var cap = track.getCapabilities ? track.getCapabilities() : {};
+            var adv = {};
+            if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) {
+              adv.focusMode = 'continuous';
+            }
+            if (cap.zoom && cap.zoom.min < cap.zoom.max) {
+              adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.15;
+            }
+            if (Object.keys(adv).length) {
+              track.applyConstraints({ advanced: [adv] }).catch(function(){});
+            }
+          }
+        }
+      }).catch(function(err) {
         console.warn('Camera failed:', err);
         document.getElementById('cp-reader').innerHTML =
           '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;">' +
