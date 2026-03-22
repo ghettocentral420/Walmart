@@ -440,11 +440,23 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
         verbose: false
       });
       scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10 },
+        { facingMode: { exact: 'environment' } },
+        { fps: 15, qrbox: function(vw, vh) { return { width: Math.floor(vw * 0.9), height: Math.floor(vh * 0.35) }; } },
         onScanSuccess,
         function() {}
-      ).catch(function(err) {
+      ).then(function() {
+        var video = document.querySelector('#cp-reader video');
+        if (video && video.srcObject) {
+          var track = video.srcObject.getVideoTracks()[0];
+          if (track) {
+            var cap = track.getCapabilities ? track.getCapabilities() : {};
+            var adv = {};
+            if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) adv.focusMode = 'continuous';
+            if (cap.zoom && cap.zoom.min < cap.zoom.max) adv.zoom = cap.zoom.min + (cap.zoom.max - cap.zoom.min) * 0.15;
+            if (Object.keys(adv).length) track.applyConstraints({ advanced: [adv] }).catch(function(){});
+          }
+        }
+      }).catch(function(err) {
         console.warn('Camera failed:', err);
         readerEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#aaa; font-family:sans-serif;"><p>Camera not available. Enter UPC manually below.</p></div>';
       });
@@ -495,7 +507,11 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
   // === PRODUCT LOOKUP (multi-source) ===
   function lookupAndShow(barcode) {
     showLoading();
-    lookupProduct(barcode).then(function(product) {
+    // Race the lookup against a 12-second timeout
+    Promise.race([
+      lookupProduct(barcode),
+      new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 12000); })
+    ]).then(function(product) {
       hideLoading();
       if (!product) product = { barcode: barcode, name: '', image: '', brand: '', price: null };
       showAddModal(product);
@@ -523,8 +539,8 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
   function lookupUpcItemDb(barcode) {
     var apiUrl = 'https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(barcode);
     var proxies = [
-      'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiUrl),
-      'https://corsproxy.io/?' + encodeURIComponent(apiUrl)
+      'https://corsproxy.io/?' + encodeURIComponent(apiUrl),
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(apiUrl)
     ];
     function parseUpcData(data) {
       if (!data || data.code !== 'OK' || !data.items || !data.items.length) return null;
@@ -555,9 +571,15 @@ return function(){let n;return(e&&(n=e(arguments)),(t._ptf=t._ptf||[]).push(o,ar
         price: (price !== null && !isNaN(price)) ? price : null
       };
     }
+    function fetchWithTimeout(url, ms) {
+      return Promise.race([
+        fetch(url),
+        new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, ms); })
+      ]);
+    }
     function tryProxy(idx) {
       if (idx >= proxies.length) return Promise.resolve(null);
-      return fetch(proxies[idx])
+      return fetchWithTimeout(proxies[idx], 8000)
         .then(function(resp) {
           if (!resp.ok) throw new Error('proxy ' + idx + ' status ' + resp.status);
           return resp.json();
